@@ -91,9 +91,15 @@ def apply_colormap_on_image(org_im, activation, colormap_name):
     heatmap = Image.fromarray((heatmap*255).astype(np.uint8))
     no_trans_heatmap = Image.fromarray((no_trans_heatmap*255).astype(np.uint8))
 
-    # Apply heatmap on iamge
+    # Apply heatmap on image
     heatmap_on_image = Image.new("RGBA", org_im.size)
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, org_im.convert('RGBA'))
+    # To avoid unmatched resolutions issues
+    if heatmap_on_image.size != heatmap.size:
+        newsize = heatmap.size
+        heatmap_on_image = heatmap_on_image.resize(newsize)
+        print('New size is: ',heatmap_on_image.size, newsize)
+
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, heatmap)
     return no_trans_heatmap, heatmap_on_image
 
@@ -232,7 +238,12 @@ def get_example_params(example_index):
     # Pick one of the examples
     example_list = (('../input_images/snake.jpg', 56),
                     ('../input_images/cat_dog.png', 243),
-                    ('../input_images/spider.png', 72))
+                    ('../input_images/spider.png', 72),
+                    ('../input_images/dd_tree.jpg', None),
+                    ('../input_images/Pierre-Person.jpg', None),
+                    ('../input_images/traffic.jpg', None),
+                    ('../input_images/carla_input/1.png', None),
+                    ('../input_images/carla_input/2.png', None))
     img_path = example_list[example_index][0]
     target_class = example_list[example_index][1]
     file_name_to_export = img_path[img_path.rfind('/')+1:img_path.rfind('.')]

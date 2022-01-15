@@ -103,7 +103,7 @@ class GradCam():
 
 if __name__ == '__main__':
     # Get params
-    target_example = 0  # Snake
+    target_example = 4  # Snake
     (original_image, prep_img, target_class, file_name_to_export, pretrained_model) =\
         get_example_params(target_example)
     # Grad cam
@@ -111,5 +111,6 @@ if __name__ == '__main__':
     # Generate cam mask
     cam = grad_cam.generate_cam(prep_img, target_class)
     # Save mask
+    
     save_class_activation_images(original_image, cam, file_name_to_export)
     print('Grad cam completed')
