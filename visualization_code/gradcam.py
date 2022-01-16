@@ -3,11 +3,13 @@ Created on Thu Oct 26 11:06:51 2017
 
 @author: Utku Ozbulak - github.com/utkuozbulak
 """
+from time import sleep
 from PIL import Image
+from cv2 import *
 import numpy as np
 import torch
 
-from misc_functions import get_example_params, save_class_activation_images
+from misc_functions import get_example_params, save_class_activation_images, get_image_path, preprocess_image
 
 
 class CamExtractor():
@@ -32,6 +34,9 @@ class CamExtractor():
             if int(module_pos) == self.target_layer:
                 x.register_hook(self.save_gradient)
                 conv_output = x  # Save the convolution output on that layer
+                print("hook layer: ", module)
+            else:
+                print("forward pass in layer: ", module)
         return conv_output, x
 
     def forward_pass(self, x):
@@ -106,6 +111,29 @@ if __name__ == '__main__':
     target_example = 4  # Snake
     (original_image, prep_img, target_class, file_name_to_export, pretrained_model) =\
         get_example_params(target_example)
+    print()
+    path = '../input_images/carla_input/'
+    image_paths = get_image_path(path,None)
+    # print(image_paths)
+    # sleep(2)
+    pretrained_model.eval()
+    for image_path in image_paths:
+        input_image = Image.open(image_path).convert('RGB')
+        input_image.show()
+        sleep(1)
+        preprocessed_image = preprocess_image(input_image, resize_im = True)
+        if torch.cuda.is_available():
+            preprocessed_image = preprocessed_image.to('cuda')
+            pretrained_model.to('cuda')
+
+        with torch.no_grad():
+            output = pretrained_model(preprocessed_image)
+        print('Output of the model for image ',image_path, 'is: \n',output)
+    
+    print('Outputs:',output[0],'\n',output.size())
+    probabilities = torch.nn.functional.softmax(output[0], dim=0)
+    print('After SoftMax: ',probabilities[0],'\n',probabilities.size())
+
     # Grad cam
     grad_cam = GradCam(pretrained_model, target_layer=11)
     # Generate cam mask

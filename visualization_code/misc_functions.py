@@ -143,6 +143,18 @@ def save_image(im, path):
         im = Image.fromarray(im)
     im.save(path)
 
+from torchvision import transforms
+
+def torch_preprocess(image):
+    preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    input_tensor = preprocess(image)
+    return input_tensor
+
 
 def preprocess_image(pil_im, resize_im=True):
     """
@@ -258,3 +270,11 @@ def get_example_params(example_index):
             target_class,
             file_name_to_export,
             pretrained_model)
+
+def get_image_path(path, filename):
+    if filename == None:
+        onlyimages = [path + f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) & f.endswith(('.jpg','.png'))]
+        return onlyimages
+    else:
+        image_path = path + filename
+        return image_path
