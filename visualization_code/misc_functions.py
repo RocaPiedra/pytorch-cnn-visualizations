@@ -264,17 +264,11 @@ def get_example_params(example_index):
     # Process image
     prep_img = preprocess_image(original_image)
     # Define model
-    pretrained_model = models.alexnet(pretrained=True)
+    # pretrained_model = models.alexnet(pretrained=True)
+    pretrained_model = models.resnet50(pretrained=True)
+    print('Model name is:',pretrained_model.__class__.__name__,'\n')
     return (original_image,
             prep_img,
             target_class,
             file_name_to_export,
             pretrained_model)
-
-def get_image_path(path, filename):
-    if filename == None:
-        onlyimages = [path + f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) & f.endswith(('.jpg','.png'))]
-        return onlyimages
-    else:
-        image_path = path + filename
-        return image_path

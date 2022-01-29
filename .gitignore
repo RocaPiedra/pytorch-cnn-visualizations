@@ -104,3 +104,5 @@ ENV/
 # mypy
 .mypy_cache/
 .vscode/launch.json
+runs/detect/exp2/1.jpg
+runs/detect/exp2/2.jpg

@@ -8,9 +8,12 @@ from PIL import Image
 from cv2 import *
 import numpy as np
 import torch
+import ntpath # to obtain the filename in a full path
+import os
+import cv2
 
-from misc_functions import get_example_params, save_class_activation_images, get_image_path, preprocess_image
-
+from misc_functions import save_class_activation_images, preprocess_image, apply_colormap_on_image
+from roc_functions import get_image_path, choose_model
 
 class CamExtractor():
     """
@@ -57,7 +60,7 @@ class CamExtractor():
         # Forward pass on the ResNet model https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
         if self.model.__class__.__name__ == 'ResNet':
             # Forward pass on the convolutions
-            conv_output, x = self.forward_pass_on_convolutions(x)
+            conv_output, x = self.resnet_forward_pass_on_convolutions(x)
             x = x.view(x.size(0), -1)  # Flatten
             # Forward pass on the classifier
             try:
@@ -75,40 +78,40 @@ class CamExtractor():
         return conv_output, x
 
     
-    # def resnet_forward_pass_on_convolutions(self, x):
-    #     """
-    #         Does a forward pass on convolutions, hooks the function at given layer
-    #         https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
-    #     """
-    #     conv_output = None
-    #     for module_pos, module in self.model._modules.items():
-    #         if module_pos == "avgpool":
-    #             x.register_hook(self.save_gradient)
-    #             conv_output = x  # Save the convolution output on that layer
-    #             x = module(x)
-    #             print("hook layer for ResNet: ", module)
-    #         else:
-    #             x = module(x)
-    #             print("forward pass in layer for ResNet: ", module)
-    #     return conv_output, x
+    def resnet_forward_pass_on_convolutions(self, x):
+        """
+            Does a forward pass on convolutions, hooks the function at given layer
+            https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
+        """
+        conv_output = None
+        for module_pos, module in self.model._modules.items():
+            if module_pos == "avgpool":
+                x.register_hook(self.save_gradient)
+                conv_output = x  # Save the convolution output on that layer
+                x = module(x)
+                print("hook layer for ResNet: ", module)
+            else:
+                x = module(x)
+                print("forward pass in layer for ResNet: ", module)
+        return conv_output, x
 
-    # def resnet_forward_pass(self, x):
-    #     """
-    #         Does a full forward pass on the ResNet model
-    #         https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
-    #     """
-    #     if self.model.__class__.__name__ == 'ResNet':
-    #         # Forward pass on the convolutions
-    #         conv_output, x = self.resnet_forward_pass_on_convolutions(x)
-    #         x = x.view(x.size(0), -1)  # Flatten
-    #         # Forward pass on the classifier
-    #         try:
-    #             x = self.model.fc(x)
-    #             print('ResNet uses .fc \n')
-    #         except:
-    #             x = self.model.classifier(x)
-    #             print('ResNet .fc failed \n')
-    #     return conv_output, x
+    def resnet_forward_pass(self, x):
+        """
+            Does a full forward pass on the ResNet model
+            https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
+        """
+        if self.model.__class__.__name__ == 'ResNet':
+            # Forward pass on the convolutions
+            conv_output, x = self.resnet_forward_pass_on_convolutions(x)
+            x = x.view(x.size(0), -1)  # Flatten
+            # Forward pass on the classifier
+            try:
+                x = self.model.fc(x)
+                print('ResNet uses .fc \n')
+            except:
+                x = self.model.classifier(x)
+                print('ResNet .fc failed \n')
+        return conv_output, x
 
 
 class GradCam():
@@ -167,38 +170,58 @@ class GradCam():
 
 
 if __name__ == '__main__':
-    # Get params
-    target_example = 4  # Snake
-    (original_image, prep_img, target_class, file_name_to_export, pretrained_model) =\
-        get_example_params(target_example)
-    print()
-    path = '../input_images/carla_input/'
-    image_paths = get_image_path(path,None)
-    # print(image_paths)
-    # sleep(2)
-    # pretrained_model.eval()
-    # for image_path in image_paths:
-    #     input_image = Image.open(image_path).convert('RGB')
-    #     input_image.show()
-    #     sleep(1)
-    #     preprocessed_image = preprocess_image(input_image, resize_im = True)
-    #     if torch.cuda.is_available():
-    #         preprocessed_image = preprocessed_image.to('cuda')
-    #         pretrained_model.to('cuda')
 
-    #     with torch.no_grad():
-    #         output = pretrained_model(preprocessed_image)
-    #     print('Output of the model for image ',image_path, 'is: \n',output)
-    
-    # print('Outputs:',output[0],'\n',output.size())
-    # probabilities = torch.nn.functional.softmax(output[0], dim=0)
-    # print('After SoftMax: ',probabilities[0],'\n',probabilities.size())
+    images_processed = int(0)
 
+    # Choose model
+    pretrained_model = choose_model()
     # Grad cam
-    grad_cam = GradCam(pretrained_model)
-    # Generate cam mask
-    cam = grad_cam.generate_cam(prep_img, target_class)
-    # Save mask
-    
-    save_class_activation_images(original_image, cam, file_name_to_export)
-    print('Grad cam completed')
+    grad_cam = GradCam(pretrained_model, target_layer=11)
+    # Choose input option
+    option = int(input('What type of input do you want: \n1.Webcam\n2.Use a path to open images\n3.Use a path to open video *not ready*\n'))
+    if option == 1:
+        frame_counter = 0
+        cap = cv2.VideoCapture(0)   # /dev/video0
+        while True:
+            ret, frame = cap.read()
+            frame_counter += 1
+            if not ret:
+                break
+            original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            cv2.imshow('Webcam',frame)
+            c = cv2.waitKey(1) # ASCII 'Esc' value
+            if c == 27:
+                break
+            prep_img = preprocess_image(original_image)
+            file_name_to_export = f'webcam_{frame_counter}'
+            cam = grad_cam.generate_cam(prep_img)
+            # Show mask
+            heatmap, heatmap_on_image = apply_colormap_on_image(original_image, cam, 'hsv')
+            cv2_heatmap_on_image = cv2.cvtColor(np.array(heatmap_on_image), cv2.COLOR_RGB2BGR)
+            cv2.imshow('GradCam',cv2_heatmap_on_image)
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+    elif option == 2:
+        path = '../input_images/carla_input/'
+        image_paths = get_image_path(path,None)
+        # do a function for target class
+        for paths in image_paths:
+            original_image = Image.open(paths).convert('RGB')
+            prep_img = preprocess_image(original_image)
+            # take the name of the file without extension:
+            file_name_to_export = os.path.splitext(ntpath.basename(paths))[0]
+            # Generate cam mask
+            cam = grad_cam.generate_cam(prep_img)
+            # Save mask
+            save_class_activation_images(original_image, cam, file_name_to_export)
+            print('Grad cam completed for image:',file_name_to_export)
+            images_processed+=1
+
+    else:
+        print('Wrong option, shutting down application...')
+        exit()
+
+    elapsed = '*unknown*'
+    print(f'A total of {images_processed} images received gradcam in {elapsed} seconds')
