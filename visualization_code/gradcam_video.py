@@ -15,12 +15,21 @@ import cv2
 from misc_functions import save_class_activation_images, preprocess_image, apply_colormap_on_image
 from roc_functions import get_image_path, choose_model
 
+# code options
+visualize = False
+sendToGPU = True
+
 class CamExtractor():
     """
         Extracts cam features from the model
     """
     def __init__(self, model, target_layer):
         self.model = model
+        if torch.cuda.is_available() and sendToGPU:
+            if visualize: print('CUDA ENABLED in CamExtractor')
+            self.model.to('cuda')
+        else:
+            print(f'Torch cuda is NOT available')
         self.target_layer = target_layer
         self.gradients = None
 
@@ -32,25 +41,29 @@ class CamExtractor():
             Does a forward pass on convolutions, hooks the function at given layer
         """
         conv_output = None
+        gpu = torch.device('cuda')
+        if not x.is_cuda and sendToGPU:
+            x = x.to(gpu)
+            if visualize: print(f'in forward pass on convolutions x is in cuda -> {x.is_cuda}')
         if self.model.__class__.__name__ == 'ResNet':
             for module_pos, module in self.model._modules.items():
                 if module_pos == "avgpool":
                     x.register_hook(self.save_gradient)
                     conv_output = x  # Save the convolution output on that layer
                     x = module(x)
-                    print("hook layer for ResNet: ", module)
+                    if visualize: print("hook layer for ResNet: ", module)
                 else:
                     x = module(x)
-                    print("forward pass in layer for ResNet: ", module)
+                    if visualize: print("forward pass in layer for ResNet: ", module)
         else:
             for module_pos, module in self.model.features._modules.items():
                 x = module(x)  # Forward
                 if int(module_pos) == self.target_layer:
                     x.register_hook(self.save_gradient)
                     conv_output = x  # Save the convolution output on that layer
-                    print("hook layer: ", module)
+                    if visualize: print("hook layer: ", module)
                 else:
-                    print("forward pass in layer: ", module)
+                    if visualize: print("forward pass in layer: ", module)
         return conv_output, x
 
     def forward_pass(self, x):
@@ -60,14 +73,18 @@ class CamExtractor():
         # Forward pass on the ResNet model https://github.com/utkuozbulak/pytorch-cnn-visualizations/issues/50
         if self.model.__class__.__name__ == 'ResNet':
             # Forward pass on the convolutions
+            if not x.is_cuda and sendToGPU:
+                if visualize: print('**\nx in forward pass to GPU\n**')
+                x.to('cuda')
+                if visualize: print(f'in forward pass x is in cuda {x.is_cuda}')
             conv_output, x = self.resnet_forward_pass_on_convolutions(x)
             x = x.view(x.size(0), -1)  # Flatten
             # Forward pass on the classifier
             try:
-                print('\n************\nResNet uses .fc \n************\n')
+                if visualize: print('\n************\nResNet uses .fc \n************\n')
                 x = self.model.fc(x)
             except:
-                print('\n************\nResNet .fc failed \n************\n')
+                if visualize: print('\n************\nResNet .fc failed \n************\n')
                 x = self.model.classifier(x)
         else:
             # Forward pass on the convolutions
@@ -89,10 +106,10 @@ class CamExtractor():
                 x.register_hook(self.save_gradient)
                 conv_output = x  # Save the convolution output on that layer
                 x = module(x)
-                print("hook layer for ResNet: ", module)
+                if visualize: print("hook layer for ResNet: ", module)
             else:
                 x = module(x)
-                print("forward pass in layer for ResNet: ", module)
+                if visualize: print("forward pass in layer for ResNet: ", module)
         return conv_output, x
 
     def resnet_forward_pass(self, x):
@@ -130,7 +147,9 @@ class GradCam():
         # model_output is the final output of the model (1, 1000)
         conv_output, model_output = self.extractor.forward_pass(input_image)
         if target_class is None:
+            model_output = model_output.cpu() # return copy to CPU to use numpy
             target_class = np.argmax(model_output.data.numpy())
+            print(f'Detected class is: {target_class}')
         # Target for backprop
         one_hot_output = torch.FloatTensor(1, model_output.size()[-1]).zero_()
         one_hot_output[0][target_class] = 1
@@ -140,8 +159,10 @@ class GradCam():
         # Backward pass with specified target
         model_output.backward(gradient=one_hot_output, retain_graph=True)
         # Get hooked gradients
-        guided_gradients = self.extractor.gradients.data.numpy()[0]
+        gradients = self.extractor.gradients.cpu() # return copy to CPU to use numpy
+        guided_gradients = gradients.data.numpy()[0]
         # Get convolution outputs
+        conv_output = conv_output.cpu() # return copy to CPU to use numpy
         target = conv_output.data.numpy()[0]
         # Get weights from gradients
         weights = np.mean(guided_gradients, axis=(1, 2))  # Take averages for each gradient
@@ -175,6 +196,15 @@ if __name__ == '__main__':
 
     # Choose model
     pretrained_model = choose_model()
+    if torch.cuda.is_available() and sendToGPU:
+        if visualize: print('CUDA ENABLED in main')
+        pretrained_model.to('cuda')
+        print(f'is model loaded to gpu? -> {next(pretrained_model.parameters()).is_cuda}')
+    elif not sendToGPU:
+        print('Using CPU') 
+    else:
+        print('CUDA NOT ENABLED in main, exit')
+        exit()
     # Grad cam
     grad_cam = GradCam(pretrained_model, target_layer=11)
     # Choose input option
@@ -192,8 +222,13 @@ if __name__ == '__main__':
             c = cv2.waitKey(1) # ASCII 'Esc' value
             if c == 27:
                 break
-            prep_img = preprocess_image(original_image)
+            prep_img = preprocess_image(original_image, sendToGPU)
             file_name_to_export = f'webcam_{frame_counter}'
+            
+            if not prep_img.is_cuda:
+                if visualize: print('**\nPreprocessed image to GPU\n**')
+                prep_img.to('cuda')
+                if visualize: print(f'in main prep_img is in cuda {prep_img.is_cuda}')
             cam = grad_cam.generate_cam(prep_img)
             # Show mask
             heatmap, heatmap_on_image = apply_colormap_on_image(original_image, cam, 'hsv')
@@ -218,6 +253,31 @@ if __name__ == '__main__':
             save_class_activation_images(original_image, cam, file_name_to_export)
             print('Grad cam completed for image:',file_name_to_export)
             images_processed+=1
+
+    if option == 3:
+        frame_counter = 0
+        video_path = '../input_images/video_input/Road-traffic.mp4'
+        cap = cv2.VideoCapture(video_path)
+        while cap.isOpened():
+            ret, frame = cap.read()
+            frame_counter += 1
+            if not ret:
+                break
+            original_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            cv2.imshow('Webcam',frame)
+            c = cv2.waitKey(1) # ASCII 'Esc' value
+            if c == 27:
+                break
+            prep_img = preprocess_image(original_image)
+            file_name_to_export = f'webcam_{frame_counter}'
+            cam = grad_cam.generate_cam(prep_img)
+            # Show mask
+            heatmap, heatmap_on_image = apply_colormap_on_image(original_image, cam, 'hsv')
+            cv2_heatmap_on_image = cv2.cvtColor(np.array(heatmap_on_image), cv2.COLOR_RGB2BGR)
+            cv2.imshow('GradCam',cv2_heatmap_on_image)
+
+        cap.release()
+        cv2.destroyAllWindows()
 
     else:
         print('Wrong option, shutting down application...')
