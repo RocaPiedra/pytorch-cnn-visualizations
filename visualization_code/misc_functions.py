@@ -94,11 +94,15 @@ def apply_colormap_on_image(org_im, activation, colormap_name):
     # Apply heatmap on image
     heatmap_on_image = Image.new("RGBA", org_im.size)
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, org_im.convert('RGBA'))
+    
     # To avoid unmatched resolutions issues
+    # if heatmap_on_image.size != heatmap.size:
+    #     newsize = heatmap.size
+    #     heatmap_on_image = heatmap_on_image.resize(newsize)
+    
     if heatmap_on_image.size != heatmap.size:
-        newsize = heatmap.size
-        heatmap_on_image = heatmap_on_image.resize(newsize)
-        print('New size is: ',heatmap_on_image.size, newsize)
+        newsize = heatmap_on_image.size
+        heatmap = heatmap.resize(newsize)
 
     heatmap_on_image = Image.alpha_composite(heatmap_on_image, heatmap)
     return no_trans_heatmap, heatmap_on_image
@@ -156,7 +160,7 @@ def torch_preprocess(image):
     return input_tensor
 
 
-def preprocess_image(pil_im, resize_im=True):
+def preprocess_image(pil_im, sendToGPU=False, resize_im=True):
     """
         Processes image for CNNs
 
@@ -194,6 +198,9 @@ def preprocess_image(pil_im, resize_im=True):
     im_as_ten.unsqueeze_(0)
     # Convert to Pytorch variable
     im_as_var = Variable(im_as_ten, requires_grad=True)
+    # if not im_as_var.is_cuda() and not sendtoGPU:
+    if sendToGPU:
+        im_as_var.to('cuda')
     return im_as_var
 
 
