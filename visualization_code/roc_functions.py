@@ -13,29 +13,6 @@ from torch.autograd import Variable
 from torchvision import models
 from misc_functions import apply_colormap_on_image, save_image
 
-def save_class_activation_images(org_img, activation_map, file_name, save_folder=None):
-    """
-        Saves cam activation map and activation map on the original image
-
-    Args:
-        org_img (PIL img): Original image
-        activation_map (numpy arr): Activation map (grayscale) 0-255
-        file_name (str): File name of the exported image
-    """
-    if not os.path.exists('../results'):
-        os.makedirs('../results')
-    # Grayscale activation map
-    heatmap, heatmap_on_image = apply_colormap_on_image(org_img, activation_map, 'hsv')
-    # Save colored heatmap
-    path_to_file = os.path.join('../results', file_name+'_Cam_Heatmap.png')
-    save_image(heatmap, path_to_file)
-    # Save heatmap on iamge
-    path_to_file = os.path.join('../results', file_name+'_Cam_On_Image.png')
-    save_image(heatmap_on_image, path_to_file)
-    # SAve grayscale heatmap
-    path_to_file = os.path.join('../results', file_name+'_Cam_Grayscale.png')
-    save_image(activation_map, path_to_file)
-
 def get_image_path(path, filename):
     if filename == None:
         onlyimages = [path + f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f)) & f.endswith(('.jpg','.png'))]
@@ -46,7 +23,7 @@ def get_image_path(path, filename):
 
 def choose_model(modelname = None):
     if modelname == 'resnet':
-        model = models.resnet50(pretrained=True)
+        model = models.resnet18(pretrained=True)
     elif modelname == 'alexnet':
         model = models.alexnet(pretrained=True)
     else:
